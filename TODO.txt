@@ -1,0 +1,82 @@
+"""
+Simplex solver
+
+0) Parse input to numpy
+1) Substitute lower bounds (xi_new = xi - l)
+2) Add slack and artificial variables
+3) Identity column for all basic variable columns
+
+4.1) check if we need to do phase 1 simplex
+    4.2 run simplex for phase 1 problem
+    
+
+5) Run simplex 
+
+Simplex algorithm Pseudocode:
+Input: list of basic variables, list of constraints, obj function, z-value
+(self.basic_vars, A, b, c, z)
+
+1) Find the largest reduced cost -> entering variable
+    1.1) returns variable and direction for the largest reduced cost 
+2) Check if optimal (no improving reduced cost) 
+3) Find leaving variable: 
+    step length t = min(t1, t2, t3)
+    t1) Check number of steps before first basic variable reaches lower bound
+    t2) t2 = upper bound of entering variable
+    t3) Check number of steps before first basic variable reaches upper bound
+
+4) New point: x_new = x + t*d
+    Entering variable replaces leaving variable
+    If t2: basis unchanged, entering = leaving
+    if t2 or t3: substitute leaving variable xr_new = u - xr (u = upper bound)
+    Perform pivot (identity column for all basic variable columns)
+5) Go to step 1
+6) Upon optimal solution: replace back substitutions
+    xr = u - xr_new
+    xi = xi_new + l
+    
+
+
+
+
+TODO implement the following methods:
+    express_objective_in_nonbasic_variables(self,  )
+    express_row_in_nonbasic_variabels(self, int row_num)
+    pivot(self, entering_variable, leaving_variable)
+    show_current_state(self, )
+    to_standard_form(self, ) : should add the necessary slack and artificial variables
+    
+
+
+
+
+
+PRINT
+
+- Inputted problem formulation
+- Problem in standard form
+- If lower bounds - state substituted variable
+
+
+
+
+    - Sentences describing which slack and artificial variables have been added and why (or if none is needed)
+    - Whether or not a Phase 1 is needed
+
+- Initial tableau
+    - Initial basis variables
+
+PER ITERATION
+- Entering variable
+- Exiting variable
+- Direction
+
+(finished)
+- Optimal value
+- Optimal values for variables
+
+
+
+
+
+"""

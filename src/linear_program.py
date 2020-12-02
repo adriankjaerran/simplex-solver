@@ -1,117 +1,36 @@
 import numpy as np
-
-
-"""
-Simplex solver
-
-0) Parse input to numpy
-1) Substitute lower bounds (xi_new = xi - l)
-2) Add slack and artificial variables
-3) Identity column for all basic variable columns
-
-4.1) check if we need to do phase 1 simplex
-    4.2 run simplex for phase 1 problem
-    
-
-5) Run simplex 
-
-Simplex algorithm Pseudocode:
-Input: list of basic variables, list of constraints, obj function, z-value
-(self.basic_vars, A, b, c, z)
-
-1) Find the largest reduced cost -> entering variable
-    1.1) returns variable and direction for the largest reduced cost 
-2) Check if optimal (no improving reduced cost) 
-3) Find leaving variable: 
-    step length t = min(t1, t2, t3)
-    t1) Check number of steps before first basic variable reaches lower bound
-    t2) t2 = upper bound of entering variable
-    t3) Check number of steps before first basic variable reaches upper bound
-
-4) New point: x_new = x + t*d
-    Entering variable replaces leaving variable
-    If t2: basis unchanged, entering = leaving
-    if t2 or t3: substitute leaving variable xr_new = u - xr (u = upper bound)
-    Perform pivot (identity column for all basic variable columns)
-5) Go to step 1
-6) Upon optimal solution: replace back substitutions
-    xr = u - xr_new
-    xi = xi_new + l
-    
-
-
-
-
-TODO implement the following methods:
-    express_objective_in_nonbasic_variables(self,  )
-    express_row_in_nonbasic_variabels(self, int row_num)
-    pivot(self, entering_variable, leaving_variable)
-    show_current_state(self, )
-    to_standard_form(self, ) : should add the necessary slack and artificial variables
-    
-
-
-
-
-
-PRINT
-
-- Inputted problem formulation
-- Problem in standard form
-- If lower bounds - state substituted variable
-
-
-
-
-    - Sentences describing which slack and artificial variables have been added and why (or if none is needed)
-    - Whether or not a Phase 1 is needed
-
-- Initial tableau
-    - Initial basis variables
-
-PER ITERATION
-- Entering variable
-- Exiting variable
-- Direction
-
-(finished)
-- Optimal value
-- Optimal values for variables
-
-
-
-
-
-"""
-
+from copy import deepcopy
+import utils
 
 class LinearProgram:
     def __init__(self):
 
         self.upper_bounded = False  # if true, different check for leaving var
-        self.phase_1 = False  # Whether phase 1 simplex must be performe
+        self.require_two_phase = False  # Whether phase 1 simplex must be performe
 
         # Original numpy arrays
-
-        self.A_orig = None  # |vars| x |constraints|
-        self.b_orig = None  # |constraints| x |1|
-        self.c_orig = None  # |1| x |vars|
-        self.z_orig = None  # |1| x |1|
+        self.A_orig = np.zeros(None)  # |vars| x |constraints|
+        self.b_orig = np.zeros(None)  # |constraints| x |1|
+        self.c_orig = np.zeros(None)  # |1| x |vars|
+        self.z_orig = np.zeros(None)  # |1| x |1|
 
         # Numpy arrays
-        self.A = None  # |vars| x |constraints|
-        self.b = None  # |constraints| x |1|
-        self.c = None  # |1| x |vars|
-        self.z = None  # |1| x |1|
+        self.A = np.zeros(None)  # |vars| x |constraints|
+        self.b = np.zeros(None)  # |constraints| x |1|
+        self.c = np.zeros(None)  # |1| x |vars|
+        self.z = np.zeros(None)  # |1| x |1|
 
         # Python lists/sets
-        self.vars = None  # ['x1', 'x2', 'x3', 's1', 's2', 's3', 'a3']
-        self.basic_vars = None  # ['x1', 'x2', 's1']    ordered by tableau
-        self.nbasic_vars = None  # ['s2', 's3']
-        self.slack_vars = None  # ['s1', 's2', 's3']
-        self.artificial_vars = None  # ['a3']
-        self.objective = None  # max or min
-        self.free_vars = None  # ['x1', 'x2', 's1']
+        self.vars = []  # ['x1', 'x2', 'x3', 's1', 's2', 's3', 'a3']
+        self.basic_vars = []  # ['x1', 'x2', 's1']    ordered by tableau
+        self.objective = []  # max or min
+        self.obj_func = {}  # {'x1': 2, 'x2': 3}
+        self.free_vars = []  # ['x1', 'x2', 's1']
+
+        # AUTO-GENERATED PROPERTIES
+        # self.nbasic_vars = None  # ['s2', 's3']
+        # self.slack_vars = None  # ['s1', 's2', 's3']
+        # self.artificial_vars = None  # ['a3']
 
         # Transformations
         self.lb_substitutions = {}  # {'x2': ('y2', func, inv_func)}
@@ -134,23 +53,24 @@ class LinearProgram:
         return self
 
     def solve(self):
+        # Convert problem to mathematical formulation
+        self._parse_problem()
+
+        if self.require_two_phase:
+            # Solve phase 1
+            lp_phase_1 = self.copy()
+            lp_phase_1.minimize(**{a: 1 for a in self.artificial_vars})
+            #lp_phase_1.solve()
+
+        # Let's simplex
+        pass
+
+    def _parse_problem(self):
         # Load problem into numpy arrays
         self.c = np.array(list(self.obj_func.values()))
 
-        # Load constraints into arrays
-
         # Convert to standard form
         self._to_standard_form()
-
-        for const in self.constraints:
-            print(const)
-        print()
-        print(self.A)
-        print(self.b)
-        # if self.phase_1:
-        #   self._solve_phase_1()
-
-        # Let's simplex
         pass
 
     def _to_standard_form(self):
@@ -162,99 +82,148 @@ class LinearProgram:
             self.vars_set.update(constraint.keys())
 
         b = []
-        remove_constraints = []
+        remove_constraints = set()
 
         # Create slack and artificial vars where needed
-        for i, constraint in enumerate(self.constraints, start=1):
+        for i, constraint in enumerate(self.constraints):
             # Extract data from constraints
             lhs = {k: v for k, v in constraint.items() if k not in ("op", "rhs")}
             op = constraint["op"]
             rhs = constraint["rhs"]
 
-            slack_var = f"s{i}"
-            artificial_var = f"a{i}"
+            slack_var = f"s{i+1}"
+            artificial_var = f"a{i+1}"
 
             if op == "<=":
                 # if only one variable: upper bounded = true
-                if list(lhs.values()).count(0) == (len(lhs) - 1):
-                    var = list(lhs.keys())[0]
-                    self.upper_bounds[var] = rhs
-                    remove_constraints.append(i)
-
-                # add slack variable
-                constraint[slack_var] = 1
-                self.vars_set.add(slack_var)
+                if utils.is_variable_constraint(lhs):
+                    upper_bound = utils.get_var_from_constraint(lhs)
+                    self.upper_bounds[upper_bound] = rhs
+                    remove_constraints.add(i)
+                else:
+                    print(f"Adding {slack_var}")
+                    constraint[slack_var] = 1
 
             elif op == ">=":
-                # if only one variable: lower bounded, perform substitution
-                if len(lhs) == 1:
-                    # replace the variable with y_i = x_i - rhs
-                    var = list(lhs.keys())[0]
-                    subst_var = f"y{i}"
-
-                    # y_i = x_i - l --> x_i = y_i + l
+                if utils.is_variable_constraint(lhs):
+                    # Replace the variable with y_i = x_i - rhs
+                    var = utils.get_var_from_constraint(lhs)
+                    print("VAR", var)
+                    print("RHS", rhs)
                     self.lb_substitutions[var] = (
-                        subst_var,
-                        lambda x: x - rhs,
-                        lambda y: y + rhs,
+                        f"y{var[1:]}",
+                        (lambda rhs: lambda x: x - rhs)(rhs),
+                        (lambda rhs: lambda y: y + rhs)(rhs),
                     )
-                    self.vars_set.discard(var)
                     constraint.pop(var)
-                    self.vars_set.add(subst_var)
-                    remove_constraints.append(i)
-
-                # subtract slack variable, add artificial variable
-                constraint[slack_var] = -1
-                constraint[artificial_var] = 1
-                self.vars_set.update([slack_var, artificial_var])
-
-                # Flag phase 1 simplex
-                self.phase_1 = True
+                    remove_constraints.add(i)
+                else:
+                    print(f"Adding {slack_var}, {artificial_var}")
+                    constraint[slack_var] = -1
+                    constraint[artificial_var] = 1
+                    self.require_two_phase = True
 
             elif op == "=":
-                # Add artificial variable
+                print(f"Adding {slack_var}")
                 constraint[artificial_var] = 1
-                self.vars.add(artificial_var)
             b.append(rhs)
 
-        for i in remove_constraints:
-            print(self.constraints)
-            self.constraints.pop(i - 1)
-            b.pop(i - 1)
+            # Update actual constraint list with modified constraint
+            self.constraints[i] = constraint
 
-        # Handle free variables
+        # Remove substituted singular >= - constraints
+        self.constraints = [con for i, con in enumerate(self.constraints) if i not in remove_constraints]
+        b = [value for i, value in enumerate(b) if i not in remove_constraints]
+
+        # Remove substituted variables
+
+
+        # Execute substitutions
+        for key, values in self.lb_substitutions.items():
+            new_key, func, _ = values
+            print(f"Substituting {key} with {new_key}")
+
+            # Substitute in constraint
+            for constraint in self.constraints:
+                if key in constraint.keys():
+                    constraint[new_key] = constraint[key] 
+                    constraint["rhs"] -= constraint[key] * (constraint[key] - func(constraint[key])) # 
+                    constraint.pop(key)
+
+            # Substitute in objective function
+            if key in self.obj_func.keys():
+                self.obj_func[new_key] = self.obj_func[key] 
+                constraint["rhs"] -= self.obj_func[key] * (self.obj_func[key] - func(self.obj_func[key])) # 
+                self.obj_func.pop(key)
+
+
+        # Handle free variables (x_i   -->   x_i+ - x_i-)
         for fv in self.free_vars:
-            # x_i = x_i+ - x_i-
             i = fv[-1]
-            self.vars_set.discard(fv)
 
+            # Substitute in constraint
             for constraint in self.constraints:
                 if fv in constraint.keys():
                     constraint[f"y{i}+"] = constraint[fv]
                     constraint[f"y{i}-"] = -1 * constraint[fv]
                     constraint.pop(fv)
 
-        # Fill in default values if not present in constraint
-        self.vars_set.update(set(self.obj_func.keys()))
-        default_constraint = {v: 0 for v in self.vars_set}
-        self.vars_set = set()
+            # Substitute in objective function
+            if fv in self.obj_func.keys():
+                self.obj_func[f"y{i}+"] = self.obj_func[fv]
+                self.obj_func[f"y{i}-"] = -1 * self.obj_func[fv]
+                self.obj_func.pop(fv)
+                
+        # Fill in default values if not present in constraint and objective function
+        default_constraint = set(self.obj_func.keys())
         for constraint in self.constraints:
-            self.vars_set.update(constraint.keys())
-            constraint = {**default_constraint, **constraint}
+            default_constraint.update(set(constraint.keys()) - {"op", "rhs"})
+        default_constraint = {v: 0 for v in default_constraint}
 
-        # Create vector of upper bounds
+        # Add blanks in constraints and objective function
+        self.obj_func = {**default_constraint, **self.obj_func}
+        for i, constraint in enumerate(self.constraints):
+            self.constraints[i] = {**default_constraint, **constraint}
 
-        # Save constraints as np arrays
+        # Create variable set
+        self.vars_set = set(default_constraint.keys())
+        self.vars = list(self.vars_set)
+        _x_vars = list(sorted(self.x_vars, key=lambda x: x[1:]))
+        _s_vars = list(sorted(self.slack_vars))
+        _a_vars = list(sorted(self.artificial_vars))
+        self.vars = _x_vars + _s_vars + _a_vars
+
+        # Create coefficient array
+        _a_vars = list(sorted(self.artificial_vars))
+
+        # Define objective function coefficients
+        self.obj_func = {k: v for k, v in sorted(self.obj_func.items(), key=lambda tup: self.vars.index(tup[0]))}
+        self.c = np.array(list(self.obj_func.values()))
+
+        # Define matrices
         A = []
+        b = []
         for constraint in self.constraints:
-            lhs = {
-                k: v for k, v in constraint.items() if k not in ("op", "rhs")
-            }  # replace with .values() when smud order
-            # TODO ensure smud order
-            A.append(list(lhs.items()))
+            # Sort constraint by order
+            lhs = {k: v for k, v in constraint.items() if k not in ("op", "rhs")}  # replace with .values() when smud order1
+            lhs = {k: v for k, v in sorted(lhs.items(), key=lambda tup: self.vars.index(tup[0]))}
+
+            A.append(list(lhs.values()))
+            b.append(constraint['rhs'])
         self.A = np.array(A)
         self.b = np.array(b)
 
+        # Debugging
+        print(f"vars = {self.vars}")
+        print(f"free_vars = {self.free_vars}")
+        print(f"nbasic_vars = {self.nbasic_vars}")
+        print(f"slack_vars = {self.slack_vars}")
+        print(f"artificial_vars = {self.artificial_vars}")
+        
+        print(f"\nc: {self.c}")
+        print(f"\nbasic_vars = {self.basic_vars}")
+        print(f"\nA: {self.A}")
+        print(f"\nb: {self.b}")
         return self
 
     def _single_iter(self):
@@ -264,7 +233,7 @@ class LinearProgram:
         """
         pass
 
-    #'x1'
+    # 'x1'
 
     def _find_next_pivot(self):
         # Identify entering variable (most negative/positive entry)
@@ -279,6 +248,9 @@ class LinearProgram:
         criteria_2 = self.upper_bound.get(self.vars[entering_col], float("inf"))
 
         # Criteria 3: A current basic variable reaches its upper bounds
+
+
+
         candidates = self.b / self.A[:, entering_col]
         candidates[candidates < 0] = float("inf")
         criteria_1 = np.min(candidates)
@@ -305,59 +277,41 @@ class LinearProgram:
         self.A -= self.A[leaving_row, :] * row_op_coeffs
         self.c -= self.A[leaving_row, :] * self.c[entering_col]
 
-    ### Methods for extracting matrices and vectors ###
-
-    ## Numpy arrays
-    #   self.A = None                               # |vars| x |constraints|
-    #   self.b = None                               # |constraints| x |1|
-    #   self.c = None                               # |1| x |vars|
-    #   self.z = None                               # |1| x |1|
-    #
-    #     #   # Python lists/sets
-    #     #   self.vars = None                            # ['x1', 'x2', 'x3', 's1', 's2', 's3', 'a3']
-    #     #   self.basic_vars = None                     # ['x1', 'x2', 's1']    ordered by tableau
-    #   self.nbasic_vars = None                     # ['s2', 's3']
-    #   self.slack_vars = None                      # ['s1', 's2', 's3']
-    #   self.artificial_vars = None                 # ['a3']
-    # self.objective = None                       # max or min
+    def copy(self):
+        return deepcopy(self)
 
     # Matrices
+    @property
     def B(self):
-        # Find indexes of variables  currently in basis
-        columns = [self.vars.index(i) for i in self.basic_vars]
-        # Extract the indecies from the original coefficient matrix
-        return self.A_orig[:, columns]
+        b_indices = [self.vars.index(i) for i in self.basic_vars]
+        return self.A_orig[:, b_indices]
 
+    @property
     def N(self):
-        # Find indexes of variables  currently not in basis
-        columns = [self.vars.index(i) for i in self.nbasic_vars]
-        # Extract the indecies from the original coefficient matrix
-        return self.A_orig[:, columns]
+        nb_indices = [self.vars.index(i) for i in self.nbasic_vars]
+        return self.A_orig[:, nb_indices]
 
+    @property
     def S(self):
-        # Find indexes of variables  currently not in basis
-        columns = [self.vars.index(i) for i in self.slack_vars]
-        # Extract the indecies from the original coefficient matrix
-        return self.A_orig[:, columns]
+        s_indices = [self.vars.index(i) for i in self.slack_vars]
+        return self.A_orig[:, s_indices]
 
     # Coefficients
-    def c(self):
-        return self.c
 
+    @property
     def c_B(self):
-        # Find indecies of variables currently in basis
-        columns = [self.vars.index(i) for i in self.basic_vars]
-        return self.c[1, columns]
+        b_indices = [self.vars.index(i) for i in self.basic_vars]
+        return self.c[1, b_indices]
 
+    @property
     def c_N(self):
-        # Find indecies of variables currently not in basis
-        columns = [self.vars.index(i) for i in self.nbasic_vars]
-        return self.c[1, columns]
+        nb_indices = [self.vars.index(i) for i in self.nbasic_vars]
+        return self.c[1, nb_indices]
 
+    @property
     def c_S(self):
-        # Find indecies of variables in slack
-        columns = [self.vars.index(i) for i in self.slack_vars]
-        return self.c[1, columns]
+        s_indices = [self.vars.index(i) for i in self.slack_vars]
+        return self.c[1, s_indices]
 
     # Variables
     def x(self):
@@ -372,17 +326,27 @@ class LinearProgram:
     def x_S(self):
         return self.slack_vars
 
-    # Values
-    def b(self):
-        return self.b.flatten()
+    # Properties
+    @property
+    def x_vars(self):
+        return [v for v in self.vars if v.startswith('x') or v.startswith('y')]
 
-    def z(self):
-        return self.z.flatten()
+    @property
+    def nbasic_vars(self):
+        return [v for v in self.vars if v not in self.basic_vars]
+
+    @property
+    def slack_vars(self):
+        return [v for v in self.vars if v.startswith('s')]
+
+    @property
+    def artificial_vars(self):
+        return [v for v in self.vars if v.startswith('a')]
 
 
 _ = 0
 
-## Problems
+# Problems
 """
 lp.maximize(x1=3, x2=4).subject_to(
     ([1, _, 2],  '<=',   10),
@@ -398,4 +362,5 @@ LinearProgram().maximize(x1=2, x2=3).subject_to(
     {"x1": 3, "x2": 1, "op": ">=", "rhs": 6},
     {"x1": 1, "x2": _, "op": ">=", "rhs": 1},
     {"x1": _, "x2": 9, "op": "<=", "rhs": 9},
+    # free_vars=['x2']
 ).solve()
