@@ -1,6 +1,10 @@
 import numpy as np
+np.set_printoptions(edgeitems=30, linewidth=1000)
+
 from copy import deepcopy
 import utils
+
+GLOBAL_COUNTER = 0
 
 class LinearProgram:
     def __init__(self):
@@ -18,12 +22,12 @@ class LinearProgram:
         self.A = np.zeros(None)  # |vars| x |constraints|
         self.b = np.zeros(None)  # |constraints| x |1|
         self.c = np.zeros(None)  # |1| x |vars|
-        self.z = np.zeros(None)  # |1| x |1|
+        self.z = np.zeros((1, 1))  # |1| x |1|
 
         # Python lists/sets
         self.vars = []  # ['x1', 'x2', 'x3', 's1', 's2', 's3', 'a3']
         self.basic_vars = []  # ['x1', 'x2', 's1']    ordered by tableau
-        self.objective = []  # max or min
+        self.objective = None  # max or min
         self.obj_func = {}  # {'x1': 2, 'x2': 3}
         self.free_vars = []  # ['x1', 'x2', 's1']
 
@@ -39,12 +43,12 @@ class LinearProgram:
 
     def maximize(self, **obj_func):
         self.obj_func = obj_func
-        self._objective = max
+        self.objective = max
         return self
 
     def minimize(self, **obj_func):
         self.obj_func = obj_func
-        self._objective = min
+        self.objective = min
         return self
 
     def subject_to(self, *constraints, free_vars=None):
@@ -53,29 +57,67 @@ class LinearProgram:
         return self
 
     def solve(self):
-        # Convert problem to mathematical formulation
-        self._parse_problem()
-
         if self.require_two_phase:
             # Solve phase 1
             lp_phase_1 = self.copy()
-            lp_phase_1.minimize(**{a: 1 for a in self.artificial_vars})
-            #lp_phase_1.solve()
+            lp_phase_1.require_two_phase = False
+            lp_phase_1.minimize(**{a: 1 for a in lp_phase_1.artificial_vars}) #minimize(x1=2)
+
+            # Formulate objective function
+            lp_phase_1.obj_func = {**lp_phase_1.default_constraint, **lp_phase_1.obj_func}
+            lp_phase_1.obj_func = utils.reorder_by_index(lp_phase_1.obj_func, lp_phase_1.vars)
+            lp_phase_1.c = -np.array(list(lp_phase_1.obj_func.values()), dtype="float64").reshape(1, -1)
+            lp_phase_1.z = np.zeros((1, 1))
+            
+            pairs = list(enumerate(lp_phase_1.basic_vars))
+            artificial_rows = np.take(lp_phase_1.A, [i for i, v in pairs if v.startswith('a')], axis=0)
+            artificial_rhs = np.take(lp_phase_1.b, [i for i, v in pairs if v.startswith('a')], axis=0)
+            lp_phase_1.c += np.sum(artificial_rows, axis=0)
+            lp_phase_1.z += np.sum(artificial_rhs, axis=0)
+            
+            print("\n"*5, "LP PHASE 1!")
+            print(lp_phase_1)
+            lp_phase_1.solve()
+
+            # Ensure that phase 1 is solvable
+            if lp_phase_1.z > 0 :
+                print("infeasible!!!")
+                return
+
+            # Update variables of current instance
+            self.A = lp_phase_1.A
+            self.b = lp_phase_1.b
+            self.basic_vars = lp_phase_1.basic_vars
+
+            # Remove artificial variables
+            self.A = self.A[:, :-len(self.artificial_vars)]
+            self.c = self.c[:, :-len(self.artificial_vars)]
+            self.vars = self.x_vars + self.slack_vars
+
+            # express z with non-basic vars
+            self.z = self.z - np.sum(self.b * self.c_B.reshape(-1, 1), axis=0) 
+            self.c = self.c - np.sum(self.A * self.c_B.reshape(-1, 1), axis=0) 
+            # print(100*"#")
+            # print(self)
 
         # Let's simplex
-        pass
+        for i in range(10):
+            print("\n"*5, f"ITERATION {i}\n")
+            print(self)
+            self._single_iter()
+            print("\n"*15)
 
-    def _parse_problem(self):
-        # Load problem into numpy arrays
-        self.c = np.array(list(self.obj_func.values()))
+            
+            # Check for optimality
+            if np.all((self.c >= 0) if self.objective is max else (self.c <= 0)):
+                print("\nSOLUTION FOUND!!")
+                print(self)
+                return
+            # entering_idx = np.argmax(-self.c if self.objective is max else self.c)
+            # entering_var = self.vars[entering_idx]
 
-        # Convert to standard form
-        self._to_standard_form()
-        pass
-
-    def _to_standard_form(self):
-        # TODO align changes with obj_func as well
-
+    def compile(self):
+        """Converts the problem to mathematical formulation."""
         # Get all defined variables
         self.vars_set = set()
         for constraint in self.constraints:
@@ -103,6 +145,7 @@ class LinearProgram:
                 else:
                     print(f"Adding {slack_var}")
                     constraint[slack_var] = 1
+                    self.basic_vars.append(slack_var)
 
             elif op == ">=":
                 if utils.is_variable_constraint(lhs):
@@ -121,11 +164,14 @@ class LinearProgram:
                     print(f"Adding {slack_var}, {artificial_var}")
                     constraint[slack_var] = -1
                     constraint[artificial_var] = 1
+                    self.basic_vars.append(artificial_var)
                     self.require_two_phase = True
 
             elif op == "=":
-                print(f"Adding {slack_var}")
+                print(f"Adding {artificial_var}")
                 constraint[artificial_var] = 1
+                self.basic_vars.append(artificial_var)
+
             b.append(rhs)
 
             # Update actual constraint list with modified constraint
@@ -147,15 +193,14 @@ class LinearProgram:
             for constraint in self.constraints:
                 if key in constraint.keys():
                     constraint[new_key] = constraint[key] 
-                    constraint["rhs"] -= constraint[key] * (constraint[key] - func(constraint[key])) # 
+                    constraint["rhs"] += constraint[key] * func(0)
                     constraint.pop(key)
 
             # Substitute in objective function
             if key in self.obj_func.keys():
                 self.obj_func[new_key] = self.obj_func[key] 
-                constraint["rhs"] -= self.obj_func[key] * (self.obj_func[key] - func(self.obj_func[key])) # 
+                self.z += self.obj_func[key] * -func(0)
                 self.obj_func.pop(key)
-
 
         # Handle free variables (x_i   -->   x_i+ - x_i-)
         for fv in self.free_vars:
@@ -164,8 +209,12 @@ class LinearProgram:
             # Substitute in constraint
             for constraint in self.constraints:
                 if fv in constraint.keys():
-                    constraint[f"y{i}+"] = constraint[fv]
-                    constraint[f"y{i}-"] = -1 * constraint[fv]
+                    new_plus = f"y{i}+"
+                    new_minus = f"y{i}-"
+                    print(f"Substituting {fv} with {new_plus} and {new_minus}")
+
+                    constraint[new_plus] = constraint[fv]
+                    constraint[new_minus] = -1 * constraint[fv]
                     constraint.pop(fv)
 
             # Substitute in objective function
@@ -175,143 +224,213 @@ class LinearProgram:
                 self.obj_func.pop(fv)
                 
         # Fill in default values if not present in constraint and objective function
-        default_constraint = set(self.obj_func.keys())
+        self.default_constraint = set(self.obj_func.keys())
         for constraint in self.constraints:
-            default_constraint.update(set(constraint.keys()) - {"op", "rhs"})
-        default_constraint = {v: 0 for v in default_constraint}
+            self.default_constraint.update(set(constraint.keys()) - {"op", "rhs"})
+        self.default_constraint = {v: 0 for v in self.default_constraint}
 
         # Add blanks in constraints and objective function
-        self.obj_func = {**default_constraint, **self.obj_func}
+        self.obj_func = {**self.default_constraint, **self.obj_func}
         for i, constraint in enumerate(self.constraints):
-            self.constraints[i] = {**default_constraint, **constraint}
+            self.constraints[i] = {**self.default_constraint, **constraint}
 
         # Create variable set
-        self.vars_set = set(default_constraint.keys())
+        self.vars_set = set(self.default_constraint.keys())
         self.vars = list(self.vars_set)
         _x_vars = list(sorted(self.x_vars, key=lambda x: x[1:]))
         _s_vars = list(sorted(self.slack_vars))
         _a_vars = list(sorted(self.artificial_vars))
         self.vars = _x_vars + _s_vars + _a_vars
 
+        # Create upper bound vector
+        default_bound = {k: float('inf') for k in self.vars_set}
+        self.upper_bounds = {**default_bound, **self.upper_bounds}
+        self.upper_bounds = utils.reorder_by_index(self.upper_bounds, self.vars)
+        self.upper_bounds_vec = np.array(list(self.upper_bounds.values())).reshape(1, -1)
+
         # Create coefficient array
         _a_vars = list(sorted(self.artificial_vars))
 
         # Define objective function coefficients
-        self.obj_func = {k: v for k, v in sorted(self.obj_func.items(), key=lambda tup: self.vars.index(tup[0]))}
-        self.c = np.array(list(self.obj_func.values()))
+        self.obj_func = utils.reorder_by_index(self.obj_func, self.vars)
+        self.c = -np.array(list(self.obj_func.values()), dtype="float64").reshape(1, -1)
 
         # Define matrices
-        A = []
-        b = []
+        A, b = [], []
         for constraint in self.constraints:
             # Sort constraint by order
-            lhs = {k: v for k, v in constraint.items() if k not in ("op", "rhs")}  # replace with .values() when smud order1
-            lhs = {k: v for k, v in sorted(lhs.items(), key=lambda tup: self.vars.index(tup[0]))}
-
+            lhs = {k: v for k, v in constraint.items() if k not in ("op", "rhs")}
+            lhs = utils.reorder_by_index(lhs, self.vars)
             A.append(list(lhs.values()))
             b.append(constraint['rhs'])
-        self.A = np.array(A)
-        self.b = np.array(b)
-
-        # Debugging
-        print(f"vars = {self.vars}")
-        print(f"free_vars = {self.free_vars}")
-        print(f"nbasic_vars = {self.nbasic_vars}")
-        print(f"slack_vars = {self.slack_vars}")
-        print(f"artificial_vars = {self.artificial_vars}")
-        
-        print(f"\nc: {self.c}")
-        print(f"\nbasic_vars = {self.basic_vars}")
-        print(f"\nA: {self.A}")
-        print(f"\nb: {self.b}")
+        self.A = np.array(A, dtype="float64")
+        self.b = np.array(b, dtype="float64").reshape(-1, 1)
         return self
 
     def _single_iter(self):
-        """
-        Assumes the following:
-            A: nxm matrix
-        """
-        pass
-
-    # 'x1'
+        criteria, leaving_var, entering_var = self._find_next_pivot()
+        self._pivot(criteria, leaving_var, entering_var)
 
     def _find_next_pivot(self):
         # Identify entering variable (most negative/positive entry)
-        entering_col = np.argmax(-self.c if self.objective is max else self.c)
+        #entering_idx = np.argmin(-self.c if self.objective is max else self.c)
+        entering_idx = np.argmin(self.c if self.objective is max else -self.c)
+        entering_var = self.vars[entering_idx]
+
+        #TODO: output lists we are minimzing
 
         # Criteria 1: Normal simplex criteria
-        candidates = self.b / self.A[:, entering_col]
-        candidates[candidates < 0] = float("inf")
-        criteria_1 = np.min(candidates)
+        numerator = self.b.ravel()
+        denominator = self.A[:, entering_idx].ravel()
+        fraction = np.divide(numerator, denominator, out=np.ones_like(denominator)*float('inf'), where=denominator>0)
+        criteria_1 = fraction.min()
+        criteria_1_var = self.basic_vars[np.argmin(fraction)]
 
         # Criteria 2: Entering variable reaches upper bound
-        criteria_2 = self.upper_bound.get(self.vars[entering_col], float("inf"))
+        criteria_2 = self.upper_bounds_vec[0, entering_idx]
+        criteria_2_var = self.vars[entering_idx]
 
         # Criteria 3: A current basic variable reaches its upper bounds
-
-
-
-        candidates = self.b / self.A[:, entering_col]
-        candidates[candidates < 0] = float("inf")
-        criteria_1 = np.min(candidates)
-
+        numerator = np.take(self.upper_bounds_vec, self._basic_indices) - self.b.ravel()
+        denominator = self.A[:, entering_idx]
+        fraction = np.divide(numerator, -denominator, out=np.ones_like(denominator)*float('inf'), where=denominator<0)
+        criteria_3 = fraction.min() 
+        criteria_3_var = self.basic_vars[np.argmin(fraction)]
+        
         # Identify leaving variable
+        defining_criteria = np.argmin([criteria_1, criteria_2, criteria_3])
+        leaving_var = [criteria_1_var, criteria_2_var, criteria_3_var][defining_criteria]
 
         # Identify direction vector
-        pass
+        direction = np.zeros(len(self.vars))
+        direction[entering_idx] = 1
+        for i, var in enumerate(self.basic_vars):
+            direction[self.vars.index(var)] = -self.A[i, entering_idx]
+        
+        print(f"Direction: {tuple(self.vars)} = {direction}")
+        print(f"T-values: {[criteria_1, criteria_2, criteria_3]}")
+        print(f"T-variables: {[criteria_1_var, criteria_2_var, criteria_3_var]}")
+        print(f"Defining criteria: {defining_criteria} \nEntering var: {entering_var} \nLeaving var: {leaving_var}")
 
-    def _pivot(self, leaving_var, entering_var):
-        leaving_row = self.basic_vars.find(leaving_var)
-        entering_col = self.vars.find(entering_var)
+        return defining_criteria, leaving_var, entering_var
 
+    def _pivot(self, criteria, leaving_var, entering_var):
+        # Check if we need to substitute
+        if criteria == 1:
+            col_idx = self.vars.index(leaving_var)
+
+            # Update problem variables
+            sub_var = f"{leaving_var[:2]}^"
+            self.vars[col_idx] = sub_var
+            print(f"Substituting {leaving_var} with {sub_var}")
+
+            self.A[:, col_idx] *= -1
+            self.c[:, col_idx] *= -1
+
+            self.b += self.upper_bounds_vec.ravel()[col_idx] * self.A[:, col_idx].reshape(-1, 1)
+            self.z += self.upper_bounds_vec.ravel()[col_idx] * self.c[:, col_idx]
+
+            # print(f'#### Result after iteration ')
+            # print(f"\nbasic_vars = {self.basic_vars}")
+            # print(f"\nc: {self.c}")
+            # print(f"\nA: {self.A}")
+            # print(f"\nb: {self.b}")
+            # print(f"\nz: {self.z}\n\n\n")
+            return 
+
+        elif criteria == 2:
+            row_idx = self.basic_vars.index(leaving_var)
+            col_idx = self.vars.index(leaving_var)
+
+            # Update problem variables
+            leaving_var = f"{leaving_var[:2]}^"
+            self.vars[col_idx] = leaving_var
+            self.basic_vars[row_idx] = leaving_var
+
+            # Row operations
+            self.A[row_idx, :] *= -1
+            self.A[row_idx, col_idx] = 1
+
+            # Modify RHS
+            self.b[row_idx] = -self.b[row_idx] + self.upper_bounds_vec[0, col_idx]
+
+        # Perform pivot
         # Update basis lists
-        self.basic_vars[leaving_row] = entering_var
+        row_idx = self.basic_vars.index(leaving_var)
+        self.basic_vars[row_idx] = entering_var
 
         # Normalize pivot
-        pivot_value = self.A[leaving_row, entering_col]
-        self.A[leaving_row, :] /= pivot_value
+        col_idx = self.vars.index(entering_var)
+        pivot_value = self.A[row_idx, col_idx]
+        self.A[row_idx, :] = self.A[row_idx, :] / pivot_value
+        self.b[row_idx, :] = self.b[row_idx, :] / pivot_value
 
         # Row operations
-        row_op_coeffs = self.A[:, entering_col]
-        row_op_coeffs[leaving_row] = 0
-        self.A -= self.A[leaving_row, :] * row_op_coeffs
-        self.c -= self.A[leaving_row, :] * self.c[entering_col]
+        row_op_coeffs = self.A[:, col_idx].copy()
+        row_op_coeffs[row_idx] = 0
+    
+        self.A -= self.A[row_idx, :] * row_op_coeffs.reshape(-1, 1)
+        self.b -= self.b[row_idx] * row_op_coeffs.reshape(-1, 1)
+
+        # Objective function operations
+        self.z -= self.b[row_idx] * self.c[0, col_idx]
+        self.c -= self.A[row_idx, :].reshape(1, -1) * self.c[0, col_idx]
+        
+        # print(f"#### Result after iteration ####")
+        # print(f"\nbasic_vars = {self.basic_vars}")
+        # print(f"\nc: {self.c}")
+        # print(f"\nA: {self.A}")
+        # print(f"\nb: {self.b}")
+        # print(f"\nz: {self.z}")
+        # print(self)
 
     def copy(self):
         return deepcopy(self)
 
+    def __str__(self):
+         # Debugging
+        output = ""
+        output += f"vars = {self.vars}\n"
+        output += f"free_vars = {self.free_vars}\n"
+        output += f"nbasic_vars = {self.nbasic_vars}\n"
+        output += f"slack_vars = {self.slack_vars}\n"
+        output += f"artificial_vars = {self.artificial_vars}\n"
+        output += f"basic_vars = {self.basic_vars}\n"
+        output += f"upper_bounds_vec = {self.upper_bounds_vec}\n"
+        # output += f"c: {self.c}\n"
+        # output += f"A: {self.A}\n"
+        # output += f"b: {self.b}\n"
+        # output += f"z: {self.z}\n"
+        output += str(np.hstack((np.vstack((np.ones((1, 1)), np.zeros_like(self.b))), np.vstack((self.c, self.A)), np.vstack((self.z, self.b)))))
+
+        return output
+
     # Matrices
     @property
     def B(self):
-        b_indices = [self.vars.index(i) for i in self.basic_vars]
-        return self.A_orig[:, b_indices]
+        return self.A_orig[:, self._basic_indices]
 
     @property
     def N(self):
-        nb_indices = [self.vars.index(i) for i in self.nbasic_vars]
-        return self.A_orig[:, nb_indices]
+        return self.A_orig[:, self._nbasic_indices]
 
     @property
     def S(self):
-        s_indices = [self.vars.index(i) for i in self.slack_vars]
-        return self.A_orig[:, s_indices]
+        return self.A_orig[:, self._slack_indices]
 
     # Coefficients
 
     @property
     def c_B(self):
-        b_indices = [self.vars.index(i) for i in self.basic_vars]
-        return self.c[1, b_indices]
+        return self.c[0, self._basic_indices]
 
     @property
     def c_N(self):
-        nb_indices = [self.vars.index(i) for i in self.nbasic_vars]
-        return self.c[1, nb_indices]
+        return self.c[0, self._nbasic_indices]
 
     @property
     def c_S(self):
-        s_indices = [self.vars.index(i) for i in self.slack_vars]
-        return self.c[1, s_indices]
+        return self.c[0, self._slack_indices]
 
     # Variables
     def x(self):
@@ -325,6 +444,23 @@ class LinearProgram:
 
     def x_S(self):
         return self.slack_vars
+
+    # Indices for variable sets
+    @property
+    def _basic_indices(self):
+        return np.array([self.vars.index(i) for i in self.basic_vars])
+        
+    @property
+    def _nbasic_indices(self):
+        return np.array([self.vars.index(i) for i in self.nbasic_vars])
+        
+    @property
+    def _slack_indices(self):
+        return np.array([self.vars.index(i) for i in self.slack_vars])
+        
+    @property
+    def _artificial_indices(self):
+        return np.array([self.vars.index(i) for i in self.artificial_vars])
 
     # Properties
     @property
@@ -344,7 +480,7 @@ class LinearProgram:
         return [v for v in self.vars if v.startswith('a')]
 
 
-_ = 0
+
 
 # Problems
 """
@@ -356,11 +492,62 @@ lp.maximize(x1=3, x2=4).subject_to(
 
 
 """
-LinearProgram().maximize(x1=2, x2=3).subject_to(
-    {"x1": 1, "x2": 1, "op": "<=", "rhs": 12},
-    {"x1": 1, "x2": 2, "op": "<=", "rhs": 20},
-    {"x1": 3, "x2": 1, "op": ">=", "rhs": 6},
-    {"x1": 1, "x2": _, "op": ">=", "rhs": 1},
-    {"x1": _, "x2": 9, "op": "<=", "rhs": 9},
+_ = 0
+x1 = "x1"
+x2 = "x2"
+x3 = "x3"
+op = "op"
+rhs = "rhs"
+
+# Assignment 5
+lp1 = LinearProgram().maximize(x1=3, x2=4).subject_to(
+    {x1: 1, x2: 1, op: "<=", rhs: 12},
+    {x1: 1, x2: 2, op: "<=", rhs: 20},
+    {x1: 3, x2: 1, op: ">=", rhs: 6},
+    {x1: 1, x2: _, op: ">=", rhs: 1},
+    {x1: _, x2: 9, op: "<=", rhs: 9},
     # free_vars=['x2']
-).solve()
+)
+
+# LRV p. 150
+lp2 = LinearProgram().maximize(x1=30, x2=20).subject_to(
+    {x1: 2, x2: 1, op: "<=", rhs: 100},
+    {x1: 1, x2: 1, op: "<=", rhs: 80},
+    {x1: 1, x2: _, op: "<=", rhs: 40},
+    {x1: _, x2: 1, op: "<=", rhs: 30},
+)
+
+#LRV p.96
+lp3 =  LinearProgram().maximize(x1=30, x2=20).subject_to(
+    {x1: 2, x2: 1, op: "<=", rhs: 100},
+    {x1: 1, x2: 1, op: "<=", rhs: 80},
+    {x1: 1, x2: _, op: "<=", rhs: 40},
+)
+
+# Exam Fall 2018 exercise 2
+lp4 = LinearProgram().maximize(x1=6, x2=-4, x3=1).subject_to(
+    {x1: 1, x2: -2, x3: _, op: "<=", rhs: 0},
+    {x1: 2, x2: 1, x3: 1, op: "<=", rhs: 10},
+    {x1: 1, x2: _, x3: _, op: "<=", rhs: 3},
+    {x1: _, x2: 1, x3: _, op: "<=", rhs: 2},
+    {x1: _, x2: _, x3: 1, op: "<=", rhs: 5},
+)
+
+# Exam Fall 2019 exercise 1
+lp5 =  LinearProgram().maximize(x1=3, x2=-1).subject_to(
+    {x1: 1, x2: 1, op: ">=", rhs: 2},
+    {x1: 1, x2: 4, op: ">=", rhs: 4},
+    {x1: -1, x2: 2, op: "<=", rhs: 4},
+    {x1: 3, x2: 1, op: "<=", rhs: 6},
+)
+
+# Assignment 3
+lp6 = LinearProgram().maximize(x1=2, x2=1).subject_to(
+    {x1: 1, x2: -3, op: "<=", rhs: 3},
+    {x1: -1, x2: 1, op: "<=", rhs: 4},
+    {x1: 1, x2: 2, op: "<=", rhs: 8},
+    # free_vars=['x2']
+)
+
+
+lp6.compile().solve()
