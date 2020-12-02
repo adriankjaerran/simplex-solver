@@ -1,5 +1,8 @@
 import numpy as np
+import fractions
 np.set_printoptions(edgeitems=30, linewidth=1000)
+np.set_printoptions(formatter={'float':lambda x: f"{str(fractions.Fraction(x).limit_denominator()) if np.isfinite(x) else '∞':4}"})
+
 
 from copy import deepcopy
 import utils
@@ -308,8 +311,8 @@ class LinearProgram:
             direction[self.vars.index(var)] = -self.A[i, entering_idx]
         
         print(f"Direction: {tuple(self.vars)} = {direction}")
-        print(f"T-values: {[criteria_1, criteria_2, criteria_3]}")
-        print(f"T-variables: {[criteria_1_var, criteria_2_var, criteria_3_var]}")
+        print(f"T-values: {np.array([criteria_1, criteria_2, criteria_3])}")
+        print(f"T-variables: {np.array([criteria_1_var, criteria_2_var, criteria_3_var])}")
         print(f"Defining criteria: {defining_criteria} \nEntering var: {entering_var} \nLeaving var: {leaving_var}")
 
         return defining_criteria, leaving_var, entering_var

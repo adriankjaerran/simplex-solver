@@ -144,7 +144,7 @@ INPUT FOR ADDING A NEW CONSTRAINT AND REOPTIMIZING
         #The leaving basic variable is ..., since t^(iteration) = min{t1,t2,t3} = min {50,40,inf} = 40
         #where t1 = min{100/2, 80/1} = 50
         #      t2 = u1 = 40
-        #      53 = min{upper bounds of basic variables} (often not defined --> inf)
+        #      53 = min{upper bounds of basic variables} (often not defined --> inf:
 
 
     # Iteration 1, entering variable x1, leaving variable a2, distance vector, [1,0,-2,-3,0], #steps 5
@@ -175,7 +175,7 @@ INPUT FOR ADDING A NEW CONSTRAINT AND REOPTIMIZING
         #The leaving basic variable is ..., since t^(iteration) = min{t1,t2,t3} = min {50,40,inf} = 40
         #where t1 = min{100/2, 80/1} = 50
         #      t2 = u1 = 40
-        #      53 = min{upper bounds of basic variables} (often not defined --> inf)
+        #      53 = min{upper bounds of basic variables} (often not defined --> inf:
         
     #####################
     ### Print tableau ###
@@ -263,22 +263,20 @@ INPUT FOR ADDING A NEW CONSTRAINT AND REOPTIMIZING
         #Variables = 
  
 
-def printIntro(self){
+def printIntro(self):
     print("The inputted problem formulation")
     #Print the initial problem formulation
     self.printInputtedProblem()
+    return self
 
-return self
-}
 
-def printInputtedProblem(self){
+def printInputtedProblem(self):
     print("###################################")
     print("### Inputted problem formulation ###")
     print("###################################")
     return self
-}
 
-def printSF(self){
+def printSF(self):
     self.printSFIntro()
     self.printLowerBounds()
     self.printSlackVars()
@@ -289,19 +287,17 @@ def printSF(self){
     self.printSFProblem()
     self.printTableauIntro()
     return self
-}
 
 
-def printSFIntro(self){
+def printSFIntro(self):
     print("Requirements for standard form:")
     print(" - All constraints are equality constraints")
     print(" - All variables must be non-negative (>=0) \n\n\n")
     print("The following substituions were made: \n\n")
     return self
-}
 
 
-def printLowerBounds(self){
+def printLowerBounds(self):
     print("Lower bound substitutions \n\n")
     print("Reference: p. 147-148")
     print("Example: Assignment 5 Task 2 \n\n")
@@ -312,9 +308,8 @@ def printLowerBounds(self){
     #" y2 = x2 - 5  -->  x2 = y2 + 5   , y2>=0"
     
     return self
-}
 
-def printSlackVars(self){
+def printSlackVars(self):
 
     print("Slack Variables \n\n")
 
@@ -326,9 +321,8 @@ def printSlackVars(self){
     #" New constraint 1: 2x1 + 3x2 + s1 = 7 "
 
 return self
-}
 
-def printArtificialVars(self){
+def printArtificialVars(self):
     print("Artificial variables \n\n")
 
     print("Reference: p.101-102")
@@ -340,10 +334,9 @@ def printArtificialVars(self){
     #"New constraint 2: 3x1 + x2 + a2 = 7"
 
     return self
-}
 
 
-def printFreeVars(self){
+def printFreeVars(self):
 
 
     print("Free variables \n\n")
@@ -355,20 +348,18 @@ def printFreeVars(self){
     #"x3: is substituted by y3^+ - y3^- because x3 is a free variable 
     #"x3 = y3+ - y3-    ,  y3+, y3- >= 0"
 
-}
 
 
-def printPhase1(self){
+def printPhase1(self):
     if not self.require_two_phase:
         print ("Phase 1 is not needed because there are no artificial variables --> the initial basic solution is feasible")
     else :
         print("Artificial variables introduced --> Phase 1 is needed to indentify a initial feasible basic solution")
 
     return self       
-}
 
 
-def printUpperBounds(self){
+def printUpperBounds(self):
     print("Upper Bounded variables \n\n")
 
     print("Reference: p. 148")
@@ -391,12 +382,11 @@ def printUpperBounds(self){
     print("     3. t3 = min {(u_j - x_j^(k)/d_j^(k)) | d_j^(k) > 0}      (The basic variable that first reaches its upper bound) \n\n")
     
     return self
-    }
 
 
 
 
-    def printSFProblem(self){
+    def printSFProblem(self):
 
         print("The problem in standard form \n\n")
 
@@ -405,10 +395,9 @@ def printUpperBounds(self){
         print("################################")
 
         return self
-    }
 
 
-    def printTableauIntro(self){
+    def printTableauIntro(self):
         if self.require_two_phase:
             print(" \n\n PHASE 1")
             print("To find a feasible basis we have to solve the phase-1 problem. \n\n")
@@ -423,16 +412,15 @@ def printUpperBounds(self){
             print("PHASE 2   (Ordinary simplex) \n\n")
             print(" \n\nThe resulting initial tableau")
         return self
-        }
 
 
-    def printIteration(self, solved){
+    def printIteration(self, solved):
         self.printTableau()
         if self.require_two_phase:
             print("The leaving basic variable is ..., since t^(iteration) = min{t1,t2,t3} = min {... , ... , ...} = ...")
             print("t1 = min{100/2, 80/1} = 50")
             print("t2 = u1 = 40")
-            print("t3 = min{upper bounds of basic variables} (often not defined --> inf)")
+            print("t3 = min{upper bounds of basic variables} (often not defined --> inf)":
 
         if solved:
             self.printSolution()
@@ -441,26 +429,23 @@ def printUpperBounds(self){
         self.printIterationValues()
 
         return self
-    }
 
-    def printTableau(self){
+    def printTableau(self):
         print("#####################")
         print("### Print tableau ###")
         print("#####################")
         print("\n\n")
         return self
-    }
 
-    def printIterationValues(self){
+    def printIterationValues(self):
         print("\n\n Iteration x \n\n")
         print("Entering variable: ...")
         print("Leaving variable: ...")
         print("Distance vector:  ...")
 
         return self
-    }
 
-    def printSolution(self, dualSimplex){
+    def printSolution(self, dualSimplex):
         print("\n\n Finished! An optimal solution was found! \n\n")
         if self.require_two_phase:
             #Template
@@ -494,32 +479,27 @@ def printUpperBounds(self){
             self.printContinueQuestion()
 
         return self
-    }
 
-    def printSensitivityAnalysis(self){
+    def printSensitivityAnalysis(self):
 
         return self
-    }
 
 
-    def printContinueQuestion(self){
+    def printContinueQuestion(self):
         print("\n\nDo you want to add a constraint or a variable and reoptimize using dual simplex? (Y/N)")
         return self
-    }
 
-    def printNextStepQuestion(self){
+    def printNextStepQuestion(self):
         print("Do you want to add a constraint (C) or add a variable (V)? (C/V)?")
         return self
-    }
 
 
-    def printNextStepQuestion(self){
+    def printNextStepQuestion(self):
         print("Do you want to add a constraint (C) or add a variable (V)? (C/V)?")
         return self
-    }
 
  
-    def printDSIntro(self, slack){
+    def printDSIntro(self, slack):
         print("\n\n DUAL SIMPLEX")
         print("Reference: p. 158-159")
         print("Example:   Example 7.3  p.160-162")
@@ -529,36 +509,31 @@ def printUpperBounds(self){
             print("The slack variable extends the tableau with one column and one row as it is added to the basis")
 
     
-    if self.require_two_phase:
-        print("Phase 1 is needed to find a initial dual feasible basic solution.")
-        print("To be dual feasible the basic solution needs to satisfy")
-        print("     c_bar_j >= 0 (min problem)")
-        print("     c_bar_j <= 0 (max problem)")
+        if self.require_two_phase:
+            print("Phase 1 is needed to find a initial dual feasible basic solution.")
+            print("To be dual feasible the basic solution needs to satisfy")
+            print("     c_bar_j >= 0 (min problem)")
+            print("     c_bar_j <= 0 (max problem)")
 
-    
-    print("Step 0: Start with the basic solution x^(0) which is dual feasible
+        
+        print("Step 0: Start with the basic solution x^(0) which is dual feasible
 
-    print("Step 1: Check the convergence criterion. The point x^(k) is an optimal solution if x_j^(k) >= 0 for all basic variables.")
-            print("--> Fulfilled / Not fulfilled")
+        print("Step 1: Check the convergence criterion. The point x^(k) is an optimal solution if x_j^(k) >= 0 for all basic variables.")
+                print("--> Fulfilled / Not fulfilled")
 
-    print("\n\nStep 2: Determine leaving basic variable. The new criterion is:")
-    print("     x_r^(k) = min (over j) {x_j^(k) | x_j^(k) < 0}")
-    print("which gives that the basic variable x_r, represented on row s in the equation system, becomes the leaving basic variable.")
-    print("     -->Leaving basic variable = ...")
+        print("\n\nStep 2: Determine leaving basic variable. The new criterion is:")
+        print("     x_r^(k) = min (over j) {x_j^(k) | x_j^(k) < 0}")
+        print("which gives that the basic variable x_r, represented on row s in the equation system, becomes the leaving basic variable.")
+        print("     -->Leaving basic variable = ...")
 
-    print("\n\nStep 3: Determine entering basic variable. The new criterion is:")
-    print("     | C_bar_p / a_bar_sp | = min (over j) {|C_bar_j/a_bar_sj|  | A_bar_sj < 0}")
-    print("which gives that x_p becomes the entering variable")
-    print("     --> Entering basic variable = ...")
-    
-    print("\n\nStep 4: Rewrite the system of equations as before, and compute x^(k+1).")
-    print("     Set k:= k+1 and go to step 1.")
-     
+        print("\n\nStep 3: Determine entering basic variable. The new criterion is:")
+        print("     | C_bar_p / a_bar_sp | = min (over j) {|C_bar_j/a_bar_sj|  | A_bar_sj < 0}")
+        print("which gives that x_p becomes the entering variable")
+        print("     --> Entering basic variable = ...")
+        
+        print("\n\nStep 4: Rewrite the system of equations as before, and compute x^(k+1).")
+        print("     Set k:= k+1 and go to step 1.")
+        
 
 
         return self
-    }
-
-
-
- 
