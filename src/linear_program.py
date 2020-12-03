@@ -323,7 +323,10 @@ class LinearProgram:
             col_idx = self.vars.index(leaving_var)
 
             # Update problem variables
-            sub_var = f"{leaving_var[:2]}^"
+            if not leaving_var.endswith("^"):
+                sub_var = f"{leaving_var[:2]}^"
+            else: 
+                sub_var = f"{leaving_var[:2]}"
             self.vars[col_idx] = sub_var
             print(f"Substituting {leaving_var} with {sub_var}")
 
@@ -499,6 +502,8 @@ _ = 0
 x1 = "x1"
 x2 = "x2"
 x3 = "x3"
+x4 = "x4"
+x5 = "x5"
 op = "op"
 rhs = "rhs"
 
@@ -553,4 +558,29 @@ lp6 = LinearProgram().maximize(x1=2, x2=1).subject_to(
 )
 
 
-lp6.compile().solve()
+# Assignment 10, exercise 1
+
+lp7 = LinearProgram().maximize(x1=3, x2=2).subject_to(
+    {x1: 1, x2: 2, op: ">=", rhs: 2},
+    {x1: 1, x2: -2, op: "<=", rhs: 1},
+    {x1: 1, x2: 1, op: "<=", rhs: 5}
+)
+
+# Assignment 11, exercise 2
+
+lp8 = LinearProgram().maximize(x1=4, x2=8, x3 = 9, x4=10).subject_to(
+    {x1: 3, x2: 5, x3:6, x4: 8, op: "<=", rhs: 10},
+    {x1: 1, op:"<=", rhs: 1},
+    {x2: 1, x3: 1, x4: 1, op:"<=", rhs: 1}
+)
+
+lp9 = LinearProgram().maximize(x1=4, x2=8, x4=10).subject_to(
+    {x1: 3, x2: 5, x4: 8, op: "<=", rhs: 10},
+    {x1: 1, op:"<=", rhs: 1},
+    {x2: 1, op:"<=", rhs: 0},
+    #{x3: 1, op:"<=", rhs: 1},
+    #{x4: 1, op:"<=", rhs: 1},
+)
+
+
+lp8.compile().solve()
